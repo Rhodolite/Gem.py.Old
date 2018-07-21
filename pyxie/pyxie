@@ -1,0 +1,4 @@
+#! /usr/bin/python2.6 -Ss
+
+__import__('sys').path[0] += '/.gem'
+exec __import__('Code')

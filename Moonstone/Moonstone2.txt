@@ -1,0 +1,245 @@
+TITLE
+    MySQL tool to convert RENAME TABLE to a transaction to speed up UI
+
+INTRODUCTION
+    A RENAME TABLE can significantly slow down the UI when it interacts with
+    a background process that is reading one of its tables.
+
+    Example:
+        Background process A is reading tables X & Y -- and creating table Z:
+
+            INSERT INTO Z(x, y)
+                AS SELECT X.x, SUM(Y.y)
+                FROM X
+                LEFT JOIN Y on X.y_id = Y.id
+                GROUP BY Y.y
+                ORDER BY Y.y;
+
+        Meanwhile process B has created a new V, W, & X tables and
+        starts it do a rename:
+
+                DROP TABLE old_V, old_W, old_X;
+
+                RENAME TABLE V TO old_V, new_V TO V,
+                             W TO old_W, new_W to W,
+                             X to old_X, new_X to X;
+
+        Process B will be stuck (on the RENAME TABLE) until process A finished
+        (imagine that process A takes one or more minutes)
+
+        Meanwhile process C, which is called from apache to service a UI wants
+        to do a simple query:
+
+                SELECT Z.y
+                FROM Z
+                WHERE Z.x = 77;
+
+        Process C will be stuck until process B is finished the table renames
+        (and process C will also read from the new_Z table after it has been
+        renamed to the Z table).
+
+    The user of the Web browser will be very disappointed that their query
+    can take up to a minute.
+
+SOLUTION
+    The proposed solution is very simple, easy to implement, and involves
+    minimal code changes.
+
+    Furthermore it can easily be enabled or disabled on the server.
+
+    Finally it will create very helpful log files to further analyze this
+    problem.
+
+    The 'involves minimal code changes' is a major part of why the proposed
+    solution is designed the way it is.
+
+    Most important a transaction that does updates in MySQL will never lock
+    out another transaction that only does read queries (assuming the read
+    queries do not use SELECT FOR UPDATE nor SELECT FOR DELETE; and also
+    doesn't have a normal SELECT implicitly and invisibly converted to
+    SELECT FOR UPDATE or SELECT FOR DELETE in a function or procedure
+    [a very annoying MySQL bug]):
+
+        o   In other words, we NEVER slow down the the query that is
+            running on behalf of a UI, it always executes fast & never
+            waits for a lock.
+
+PROPOSAL
+    A RENAME TABLE is passed to a sub-process that will do the following:
+
+        1.  Query a table as to how many transactions to attempt (this can
+            be set to zero to disable transactions)
+
+        2.  If the number of transactions is greater than 0:
+
+                o   Ignore all renames to old tables (names like 'old_%')
+
+                o   For all other renames, compare the schemas of the two
+                    two tables (ignoring all non-primary index, and ignoring
+                    all foreign keys)
+
+                    If the new table does not exist (i.e.: no schema & table
+                    does not exist) then this is not an error, treat this as
+                    different schemas.
+
+                o   If any other renames have different schemas, do not
+                    attempt any transactions.
+
+        3.  If attempting transactions:
+
+                Repeat up to maximum number of transactions:
+
+                    Create a transactions
+
+                    Replace each table rename with:
+
+                        DELETE FROM new_name;
+
+                        INSERT INTO new_name
+                          SELECT * FROM old_name
+                          ORDER BY primary_key_name;
+
+                    commit the transaction
+
+                    if the commit succeeds:
+
+                        Drop the new tables
+                        Log & return
+
+                        NOTE: No OLD tables are created!!!
+
+                    if a 'deadlock' or 'timeout' error happens, continue the
+                    loop
+
+                    Any other error, report the error & break the loop
+
+        4.  Attempt the normal rename, once.  Report any errors.  Log & Return.
+
+    EXAMPLE:
+
+        RENAME TABLE V TO old_V, new_V TO V,
+                     W TO old_W, new_W to W,
+                     X to old_X, new_X to X;
+
+        Will attempt the following transaction up to 10 times (assuming 'id'
+        is the primary key of all three tables and '10' has been selected as
+        the number of retries to attempt):
+
+            BEGIN
+                DELETE FROM V;
+
+                INSERT INTO V
+                    SELECT * FROM new_V
+                    ORDER BY id;
+
+                DELETE FROM W;
+
+                INSERT INTO W
+                    SELECT * FROM new_W
+                    ORDER BY id;
+
+                DELETE FROM X;
+
+                INSERT INTO X
+                    SELECT * FROM new_X;
+                    ORDER BY id;
+            COMMIT;
+
+            DROP TABLE new_V, new_W, new_X;
+
+        (NOTE: In this case, SELECT * is "safe" since the schemas have been
+        verified to be identical; assuming no other process is messing
+        with table definitions; also if it fails, it will drop back to the
+        default RENAME table);
+
+
+TRADEOFF
+    The DELETE(s) & INSERT(s) in a single transaction to multiple large
+    tables (all with many index) is SIGNIFICANTLY slower than a rename
+    table.
+
+    Again though, the advantage is is doesn't slow down the query running
+    on behalf of a UI.
+
+    (And since it's a background process, it doesn't really matter if 
+    the DELETE(S) & INSERT(S) take a few minutes).
+
+    Plus, this is the proper way to do transactions which are ACID
+    (See appendix A for why RENAME TABLE is atomic but not ACID).
+
+
+APPENDIX A - ATOMIC .vs. TRANSACTIONAL
+    A RENAME TABLE command is considered DDL (Data Definition Language).
+
+    DDL commands are executed by the MySQL server as not transactional
+    (in fact if any transaction is pending, the transaction is auto committed
+    before the DDL statement is executed)
+
+    RENAME TABLE is atomic; however, as explained in the introduction, when
+    interacting with a background process they can slow down a query for
+    a UI process that would normally execute in less than a 10th of a second.
+
+    To clarify the difference:
+
+        1)  Atomic means it either fully executes or if fully does not
+            execute.
+
+        2)  Transactional means it conforms to ACID:
+
+                Atomic
+                Consistent
+                Isolation
+                Durability
+
+    A RENAME table is not ACID, as it is not 'consistent' nor 'isolated', in
+    particular a series of queries in REPEATABLE READ mode isolation mode
+    (the default isolation mode for InnoDB) by another process can end up
+    reading from the wrong tables; example:
+
+            Process 1:
+                CREATE TABLE A(id INT, b_id INT, c INT);
+                CREATE TABLE B(id INT, c INT);
+                INSERT INTO A(id, b_id) VALUES(1, 2, 3);
+                INSERT INTO B(id, c) VALUES(2, 3);
+
+                BEGIN
+                   SELECT A.b_id, A.C
+                   FROM A
+                   WHERE id = 1
+                   INTO @ab, @ac;
+
+                   SELECT SLEEP(100);
+
+                   SELECT B.c
+                   WHERE b.id = @ab
+                   INTO @bc;
+                COMMIT;
+
+                SELECT @ac, @bc;
+
+            Process 2:
+                UPDATE A
+                SET b_id = 4, c = 5
+                WHERE id = 1;
+
+                CREATE TABLE new_B(id INT, c INT);
+                INSERT INTO new_B(id, b_id) VALUES(4, 5);
+
+                RENAME TABLE B TO old_B, new_B TO B
+
+            This will print out:
+
+                +-----+------+
+                + @ac | @bc  |
+                +-----+------+
+                +   3 | NULL |
+                +-----+------+
+
+            Because the first process reads from:
+
+                A (before it was updated)
+                new_B (renamed to B)
+
+            Which is both inconsistent & not isolated (in fact it will see B
+            B as it existed [under its old name old_B] at the time it did the
+            first read from A).

@@ -1,0 +1,802 @@
+Specific Proposal for PEP 505 - None-Aware Operators
+
+Abstract
+
+This, initial draft, is to continue the discussion on PEP 505 - None-Aware
+Operators from PEP 505.
+
+The specification proposed is to assist in the discussion -- many of the ideas
+here will need to be changed
+
+Proposed
+
+1)  Use ? as the primary prefix or suffix to operators.
+
+2)  An operators with ? affects the rest of the "expression fragment".
+
+3)  User configurable via the __collase__ member.
+
+4)  Comprehensive, consistent syntax, affecting many operators.
+
+User Configuarable
+
+Instead of making the collape operator work only on None, this specific proposal
+suggests having a __collape__ member that the user can set on any class.
+
+To allow the use of ? in the context of the @ decorator, the return value of
+__collape__ in an object, that has a few members defined.
+
+The names obviously can be improved, but for now, these are the three members:
+
+    'at_sign'   Function used for '@' syntax
+    'dot'       Function used for '.' syntax
+    'value'     Value used for all other cases.
+
+"Expression Fragment"
+
+The main use case is:
+
+1.  a?.b
+
+    means:
+
+    (
+     a.__collase__.dot('b')
+      if getattr(a, '__collase__', none) is none else
+       a.b
+    )
+
+However this quickly gets complicated:
+
+2.  a?.b.c
+
+    Here if 'a?.b' collases, then we don't want to evalute the '.c'
+
+    Thus 'a?.b.c' is taken to be an "expression" fragment, and the '?'
+    "propogates" from the '?.' to the next '.' operator.
+
+    Thus:
+
+        a?.b.c
+
+    means:
+
+        (
+         a.__collase__.dot('b')
+          if getattr(a, '__collase__', none) is none else
+           a.b.c
+        )
+
+    This should be read as only evaluating 'a' & 'a.__collase__' once, as if the following
+    was executed:
+
+        _a         = a
+        _a_collase = getattr(_a, '__collase__', none)
+
+        if _a_collase is none:
+            return _a.b
+
+        return _a_collase.dot('b')
+
+This needs to be taken even furthur to a function call or an index operation:
+
+3.  a.b?.c[d](f)
+
+    Here if 'a.b?.' collases, then we don't want to evaluate '.c[d](f)'
+
+    Thus:
+
+        a.b?.c[d](f)
+
+    means:
+
+        (
+         a.b.__collase__.dot('c')
+          if getattr(a.b, '__collase__', none) is none else
+           a.b.c[d](f)
+        )
+
+    This should be read as only evaluating 'a.b' & 'a.b.__collase__' once, as if the following
+    was executed:
+
+        #
+        #   Make sure to only evaluate 'a.b' & 'a.b.__collase' once
+        #
+        def collase_dot_2(ab, c, rest)
+            collase = getattr(ab, '__collase__', none)
+
+            if collase is none:
+                return rest(ab)
+
+            return collase.dot(c)
+
+        collase_dot_2(a.b, 'c', lambda ab: ab.c[d](f))
+
+We also want to be able to use ? before a function call or an indexing operation:
+
+4.  a?(f, h)
+
+    means:
+
+        (
+         a.__collase__.value
+          if getattr(a, '__collase__', none) is none else
+           a(f, h)
+        )
+
+5.  a.b?[d]
+
+    means:
+
+        (
+         a.b__collase__.value
+          if getattr(a.b, '__collase__', none) is none else
+           a.b[d]
+        ) 
+
+For functions & indexing, we also might want to collase based on the arguments.
+
+The suggested syntax is:
+
+4.  a.b.c(f.g, h.i?)
+
+    Here if 'h.i?' collases, then we don't evaluate 'a.b', 'f.g', 'j.k', or the function call.
+
+    Thus:
+
+    a.b.c(f.g, h.i?)
+
+    means:
+
+    (
+     h.i.__collase__.value
+      if getattr(h.i, '__collase__', none) is none else
+       a.b(f.g, h.i?)
+    )
+
+
+The same syntax would apply to the indexing operations.
+
+Thus as a complicated example:
+
+5.  a.b?.c[d?, e](f.g, h.i?)?.j
+
+    means:
+
+    (
+     a.b.__collase__.dot('c')
+      if getattr(a.b, '__collase__', none) is none else
+       (
+        d.__collase__.value
+         if getattr(d, '__collase__', none) is none else
+          (
+           h.i.__collase__.value
+            if getattr(h.i, '__collase__', none) is none else
+             (
+              a.b.c[d, e](f.g, h.i).__collase__.value
+               if getattr(a.b.c[d, e](f.g, h.i), '__collase__', none) is none
+               else
+                a.b.c[d, e](f.g, h.i).j
+             )
+          )
+       )
+    )
+
+    NOTE: that first we do the short-circuit evaluation from left to right; i.e.:
+
+        a.b
+        d
+        h.i
+        
+    Then evaluate the other parts of the expression:
+
+        .c
+        .c[d, e]
+        a.b.c[d, e](f.g, h.i)
+
+    Again short circuit; and finally evaluate:
+
+        .j
+
+    To be precise the above wou
+        
+This draft PEP suggests many new operators, using ? as part of the operator.
+
+Objects that implement coallasing must have a __collase__ member; objects that
+do not have a __collase__ member, or a __collase__ member with a value of None
+do not implement coallasing.
+
+Short Circuit operators
+
+All uses of ? are short circuiting operators, only evaluating the neccessary
+operand first.
+
+The other operands, if any, are only evaluating when not collasing.
+
+Result from __collase__ member
+
+If the __collase__ member does not exist, or evalutates to 'None' then
+collasing is not done.
+
+A value of 'None' is allowd, so that derived classes can restore the behavior
+to '__collase__' to the default case, ii one of their ancestor classes defind
+'__colllase'.
+
+Otherwise '__collase__' must evaulate to an object with the following four
+members:
+
+    'at_sign'   Function used for '@' syntax
+    'dot'       Function used for '.' syntax
+    'value'     Value used for all other cases.
+
+Examples
+
+In all example, assume, that original expressions are only evaluated once.
+
+Also assume that any access of the origianl expression & '__collase__' is only
+evaluated once.
+
+Thus the following example:
+
+1.  a?.b
+
+        means:
+
+    (a.__collase__.dot('b')
+        if getattr(a, '__collase__', none) is none else
+            a.b)
+
+Should be read as only evaluating 'a' & 'a.__collase__' once, as if the following
+was executed:
+
+    #
+    #   This shows only evaluate 'a' & 'a.__collase' once
+    #
+    def example_1(left, right)
+        collase = getattr(left, '__collase__', none)
+
+        if collase is none:
+            return attr(left, right)
+
+        return collase.dot(right)
+
+    example_1(a, 'b')       #   Equivalent to a?.b
+
+
+Atoms & Trailers
+
+An atom & its trailers are considered an "expression fragment".  Any appearnce of
+?., ?( ?[ in the trailers might collape & short circuit the rest of the
+expression.
+
+In addition the appearance of a postfix '?' operator inside an index or function
+call will short circuit the whole index or function call
+
+
+Examples:
+
+1.  a?.b
+
+        means:
+
+    (
+        a.__collase__.dot('b')
+            if getattr(a, '__collase__', none) is none else
+                a.b
+    )
+    
+
+2.  a?.b.c
+
+        means:
+
+    (
+        a.__collase__.dot('b')
+            if getattr(a, '__collase__', none) is none else
+                a.b.c
+    )
+
+3.  a.b?.c
+
+        means:
+
+    (
+        a.b.__collase__.dot('c')
+            if getattr(a.b, '__collase__', none) is none else
+                a.b.c
+    )
+
+4.  a?.b?.c
+
+        means:
+
+    (
+        a.__collase__.dot('b')
+            if getattr(a, '__collase__', none) is none else
+                (
+                    a.b.__collase__.dot('c')
+                        if getattr(a.b, '__collase__', none) is none else
+                            a.b.c
+                )
+    )
+
+5.  a?(d, e)
+
+        means:
+
+    (
+        a.__collase__.value
+            if getattr(a, '__collase__', none) is none else
+                a(d, e)
+    )
+
+
+6.  a(d?, e)
+
+        means:
+
+    (
+        d.__collase__.value
+            if getattr(d, '__collase__', none) is none else
+                a(d, e)
+    )
+    
+7.  a(d, e?)
+
+        means:
+
+    (
+        e.__collase__.value
+            if getattr(d, '__collase__', none) is none else
+                a(d, e)
+    )
+    
+8.  a(d?, e?)
+
+        means:
+
+    (
+        d.__collase__.value
+            if getattr(d, '__collase__', none) is none else
+                (
+                    e.__collase__.value
+                        if getattr(d, '__collase__', none) is none else
+                            a(d, e)
+                )
+    )
+    
+9.  a?.b(d, e)
+
+        means:
+
+    (
+        a.__collase__.dot('b')
+            if getattr(a, '__collase__', none) is none else
+                a.b(d, e)
+    )
+
+10. a.b?(d, e)
+
+        means:
+
+    (
+        a.b__collase__.value
+            if getattr(a.b, '__collase__', none) is none else
+                a.b(d, e)
+    )
+
+11. a?.b?(d?, e?)
+
+        means:
+
+    (
+        a.__collase__.dot('b')
+            if getattr(a, '__collase__', none) is none else
+                (
+                    a.b__collase__.value
+                        if getattr(a.b, '__collase__', none) is none else
+                            (
+                                d.__collase__.value
+                                    if getattr(d, '__collase__', none) is none
+                                    else
+                                        (
+                                            e.__collase__.value
+                                                if getattr(
+                                                        d, '__collase__', none
+                                                ) is none else
+                                                    a.b(d, e)
+                                        )
+                            )
+                )
+    )
+
+9.  a?[f]
+
+        means:
+
+    (
+
+
+    x = (none   if f is none else   a(f, g, h))
+
+where we only want to call the function 'a' if f does not collapse.
+
+The suggested syntax is:
+
+4.  a.b.c(f.g, h.i?, j.k)
+
+    Here if 'h.i?' collases, then we don't evaluate 'a.b', 'f.g', 'j.k', or the function call.
+
+    Thus:
+
+    a.b.c(f.g, h.i?, j.k)
+
+    means:
+
+    (
+     h.i.__collase__.value
+      if getattr(h.i, '__collase__', none) is none else
+       a.b(f.g, h.i?, j.k)
+    )
+
+The same syntax would apply for the [] index operator.
+
+So as a complicated example consider:
+
+5.  a.b?.c(f.g, h.i?, j.k)?[l.m, n.o, p?.q]?.r
+
+    means:
+
+    (
+     a.b.__collase__.dot('c')
+      if getattr(a.b, '__collase__', none) is none else
+       (
+        h.i.__collase__.value
+         if getattr(h.i, '__collase__', none) is none else
+       )
+    )
+
+
+This draft PEP suggests many new operators, using ? as part of the operator.
+
+Objects that implement coallasing must have a __collase__ member; objects that
+do not have a __collase__ member, or a __collase__ member with a value of None
+do not implement coallasing.
+
+Short Circuit operators
+
+All uses of ? are short circuiting operators, only evaluating the neccessary
+operand first.
+
+The other operands, if any, are only evaluating when not collasing.
+
+Result from __collase__ member
+
+If the __collase__ member does not exist, or evalutates to 'None' then
+collasing is not done.
+
+A value of 'None' is allowd, so that derived classes can restore the behavior
+to '__collase__' to the default case, ii one of their ancestor classes defind
+'__colllase'.
+
+Otherwise '__collase__' must evaulate to an object with the following four
+members:
+
+    'at_sign'   Function used for '@' syntax
+    'dot'       Function used for '.' syntax
+    'value'     Value used for all other cases.
+
+Examples
+
+In all example, assume, that original expressions are only evaluated once.
+
+Also assume that any access of the origianl expression & '__collase__' is only
+evaluated once.
+
+Thus the following example:
+
+1.  a?.b
+
+        means:
+
+    (a.__collase__.dot('b')
+        if getattr(a, '__collase__', none) is none else
+            a.b)
+
+Should be read as only evaluating 'a' & 'a.__collase__' once, as if the following
+was executed:
+
+    #
+    #   This shows only evaluate 'a' & 'a.__collase' once
+    #
+    def example_1(left, right)
+        collase = getattr(left, '__collase__', none)
+
+        if collase is none:
+            return attr(left, right)
+
+        return collase.dot(right)
+
+    example_1(a, 'b')       #   Equivalent to a?.b
+
+
+Atoms & Trailers
+
+An atom & its trailers are considered an "expression fragment".  Any appearnce of
+?., ?( ?[ in the trailers might collape & short circuit the rest of the
+expression.
+
+In addition the appearance of a postfix '?' operator inside an index or function
+call will short circuit the whole index or function call
+
+
+Examples:
+
+1.  a?.b
+
+        means:
+
+    (
+        a.__collase__.dot('b')
+            if getattr(a, '__collase__', none) is none else
+                a.b
+    )
+    
+
+2.  a?.b.c
+
+        means:
+
+    (
+        a.__collase__.dot('b')
+            if getattr(a, '__collase__', none) is none else
+                a.b.c
+    )
+
+3.  a.b?.c
+
+        means:
+
+    (
+        a.b.__collase__.dot('c')
+            if getattr(a.b, '__collase__', none) is none else
+                a.b.c
+    )
+
+4.  a?.b?.c
+
+        means:
+
+    (
+        a.__collase__.dot('b')
+            if getattr(a, '__collase__', none) is none else
+                (
+                    a.b.__collase__.dot('c')
+                        if getattr(a.b, '__collase__', none) is none else
+                            a.b.c
+                )
+    )
+
+5.  a?(d, e)
+
+        means:
+
+    (
+        a.__collase__.value
+            if getattr(a, '__collase__', none) is none else
+                a(d, e)
+    )
+
+
+6.  a(d?, e)
+
+        means:
+
+    (
+        d.__collase__.value
+            if getattr(d, '__collase__', none) is none else
+                a(d, e)
+    )
+    
+7.  a(d, e?)
+
+        means:
+
+    (
+        e.__collase__.value
+            if getattr(d, '__collase__', none) is none else
+                a(d, e)
+    )
+    
+8.  a(d?, e?)
+
+        means:
+
+    (
+        d.__collase__.value
+            if getattr(d, '__collase__', none) is none else
+                (
+                    e.__collase__.value
+                        if getattr(d, '__collase__', none) is none else
+                            a(d, e)
+                )
+    )
+    
+9.  a?.b(d, e)
+
+        means:
+
+    (
+        a.__collase__.dot('b')
+            if getattr(a, '__collase__', none) is none else
+                a.b(d, e)
+    )
+
+10. a.b?(d, e)
+
+        means:
+
+    (
+        a.b__collase__.value
+            if getattr(a.b, '__collase__', none) is none else
+                a.b(d, e)
+    )
+
+11. a?.b?(d?, e?)
+
+        means:
+
+    (
+        a.__collase__.dot('b')
+            if getattr(a, '__collase__', none) is none else
+                (
+                    a.b__collase__.value
+                        if getattr(a.b, '__collase__', none) is none else
+                            (
+                                d.__collase__.value
+                                    if getattr(d, '__collase__', none) is none
+                                    else
+                                        (
+                                            e.__collase__.value
+                                                if getattr(
+                                                        d, '__collase__', none
+                                                ) is none else
+                                                    a.b(d, e)
+                                        )
+                            )
+                )
+    )
+
+9.  a?[f]
+
+        means:
+
+    (
+        a.__collase__.subscript
+            if getattr(a, '__collase__', none) is none else
+                a[b]
+    )
+
+10. a[f?]
+
+        means:
+
+    (
+        f.__collase__.value
+            if getattr(f, '__collase__', none) is none else
+                a[f]
+    )
+
+12. a[f?, g?]
+
+        means:
+
+    (
+        f.__collase__.value
+            if getattr(f, '__collase__', none) is none else
+                (
+                    g.__collase__.value
+                        if getattr(g, '__collase__', none) is none else
+                            a[f, g]
+                )
+
+    )
+
+
+11. a?.b?[f?, g?]
+
+        means:
+
+    (
+        a.__collase__.dot('b')
+            if getattr(a, '__collase__', none) is none else
+                (
+                    a.b.__collase__.dot('c')
+                        if getattr(a.b, '__collase__', none) is none else
+                            (
+                                f.__collase__.value
+                                    if getattr(f, '__collase__', none) is none
+                                    else
+                                        (
+                                            g.__collase__.value
+                                                if getattr(
+                                                        g, '__collase__', none
+                                                ) is none else
+                                                    a.b[f, g]
+                                        )
+
+                            )
+                )
+    )
+
+
+12. a?.b(c, d)[f].g
+
+        means:
+
+    (
+        a.__collase__.subscript
+            if getattr(a, '__collase__', none) is none else
+                a.b(c, d)[f].g
+    )
+
+
+13. a.b?(c, d)[f].g
+
+        means:
+
+    (
+        a.b.__collase__.value
+            if getattr(a.b, '__collase__', none) is none else
+                a.b(c, d)[f].g
+    )
+
+14. a.b(c, d)[f?].g
+
+        means:
+
+    (
+        f.__collase__.value
+            if getattr(f, '__collase__', none) is none else
+                a.b(c, d)[f].g
+    )
+
+
+15. a.b(c, d)[f]?.g
+
+        means:
+
+    (
+        a.b(c, d)[f].__collase__.value
+            if getattr(a.b(c, d)[f], '__collase__', none) is none else
+                a.b(c, d)[f].g
+                
+    )
+
+
+16. a?.b(c, d?)[f?]?.g
+
+        means:
+
+    (
+        a.__collase__.dot('b')
+            if getattr(a, '__collase__', none) is none else
+                (
+                    d.__collase__.value
+                        if getattr(d, '__collase__', none) is none else
+                            (
+                                f.__collase__.value
+                                    if getattr(f, '__collase__', none) is none
+                                    else
+                                        (
+                                            a.b(c, d)[f].__collase__.dot('g')
+                                                if getattr(
+                                                        a.b(c, d)[f],
+                                                        '__collase__',
+                                                        none
+                                                ) is none else
+                                                    a.b(c, d)[f].g
+                                        )
+                            )
+                )
+    )

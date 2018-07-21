@@ -1,0 +1,96 @@
+TITLE
+    MySQL tool to document schemas, read schemas, create Python & PHP (Part 1)
+
+INTRODUCTION
+    MySQL is very easy to use initially; but is actually quite difficult to
+    use (and coordinate between different programs) with complex data sets.
+
+    A particular problem is MySQL's tendency to hang on complex queries; and
+    the necessity of hand optimizing subqueries (to avoid hanging).
+
+    Also when using normalized tables, it becomes difficult (and very
+    repetitious and error prone) to constantly join them in different ways:
+
+        o   This is particularly true when the joins are doing on
+            meaningless integer foreign keys (for calculations); and then
+            other joins are also necessary to create debug views to
+            understand what is going on.
+
+    Initial attempts to solve this problem with views, leads to a particular
+    insidious problem --- nested views can quickly do too many joins
+    (leading to the dreaded 'only 61 joins allowed') --- even when only
+    some of these joins are actually needed at the high level.  Attempting
+    to get around this problem leads, again, to creating many redundant
+    views (which is error prone & hard to maintain).
+
+PROPOSAL
+    To create a tool that understands the MySQL language and can help
+    with these issues.
+
+    Particular emphasis, for phase 1, will be as follows:
+
+        1.  Fully parsing the MySQL language
+
+        2.  Allowing schemas to be described; and their interrelationships
+            (i.e.: foreign keys).
+
+        3.  Allow nested views to be created & used, and optimizing these
+            to the minimum views necessary.
+
+    The most important feature for phase 1, will be:
+
+        4.  Given a complex MySQL query, with subqueries (many of these
+            which will often use views for ease of description), be able
+            to generate code to create temporary tables, with appropriate
+            indexes.
+
+            EXAMPLE: Given the following:
+
+                SELECT A.a, B.b, B.d, DF.e
+                FROM A
+                LEFT JOIN B on A.x = B.x
+                LEFT JOIN (
+                    SELECT D.d, SUM(D.e) AS e,
+                    INNER JOIN F on D.y = F.y
+                    GROUP BY D.d
+                ) AS DF ON B.d = DF.d;
+
+            Would generate the following:
+
+                CREATE TABLE IF NOT EXISTS temporary_DF(
+                    d VARCHAR(100),
+                    e DECIMAL(18,2),
+                    CREATE INDEX d(d) USING BTREE,
+                    CREATE INDEX e(e) USING BTREE
+                )
+                    ENGINE = InnoDB
+                    DEFAULT CHARACTER SET = 'utf8'
+                    DEFAULT COLLATION = 'utf8_general_ci';
+
+                DELETE FROM temporary_DF;
+
+                INSERT INTO temporary_DF(d, e)
+                    SELECT D.d, SUM(D.e) AS e,
+                    INNER JOIN F on D.y = F.y
+                    GROUP BY D.d;
+
+                SELECT A.a, B.b, B.d, DF.e
+                FROM A
+                LEFT JOIN B on A.x = B.x
+                LEFT JOIN temproary_DF AS DF ON B.d = DF.d;
+
+            Including, for example the original queries used views,
+            like an ABC view that joined A, B, & C (the join inside
+            view ABC, would remove the join to C since it is not
+            actually used inside the example above; NOTE: obviously
+            an INNER JOIN would not be removed, only a LEFT JOIN).
+
+    For Phase 1, generated code would be able to:
+
+        5.  Generated as pure MySQL code;
+
+        6.  Generated as Python code for SQLAlchemy using
+            MySQL+pymysql;
+
+        7.  Create a parse tree, that is easy to use to generate
+            other language (such as php).

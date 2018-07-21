@@ -1,0 +1,41 @@
+Boot process is as follows:
+
+pyxie
+    import Gem
+        module()
+            Boot.make_boot
+                (Replaces sys.modules['Boot'] with boot2)
+                (Replaces sys.modules['Pyxie'] with boot3.func_code)
+        boot2()
+
+
+A special note on 'del __builtins__':
+
+    When modifying a scope by removing it's builtins; any use of the scope on the frame
+    stack has already cached the __builtins__ & continues to use that.
+
+    Thus, 'del __builtins__' will not remove the builtins on the current frame stack.
+
+    In addition 'exec x' will look at the scope used, and if it is missing '__builtins'
+    will add it back in.
+
+    Therefore in 'pyxie' the line that reads:
+
+        exec __import__('Gem')
+
+    Will:
+
+        1.  Still be able to use its original 'builtins' (before Gem removed them)
+
+        2.  Will *ADD* the original 'builtins' back to its original scope
+
+        3.  Pass this original scope to Boot.boot3.func_code
+
+        4.  Thus, likewise, Boot.boot3 will be stuck with '__builtins__', and not be
+            able to get rid of them.
+
+Modules & Scopes:
+    
+    1. pyxie - original module & becomes privileged scope.  Used for merge_gem code.
+    2. restricted_scope - created in non-debug module only, no module.
+    3. Gem - Small scope with a few globals, stored in sys.modules.

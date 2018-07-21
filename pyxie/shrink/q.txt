@@ -1,0 +1,17 @@
+import gc
+
+ModuleType = type(gc)       #   Same as ModuleType from types.py
+
+def make_module(name, **keywords):
+    """A quick, & super efficient way to create an object with a few attributes"""
+
+    module = ModuleType(name)
+
+    module.update(**keywords)
+
+    print dir(module)
+
+    return moduleS
+
+
+none_
