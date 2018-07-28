@@ -12,20 +12,20 @@
 #
 
 
-def gem(module_name):
+def module(module_name):
     def execute(f):
         f()
 
-        return gem
+        return module
 
     return execute
 
 
-@gem('Gem.Boot')
-def gem():
+@module('Agate.Boot')
+def module():
     #
     #
-    #   This really belongs in Gem.Core, but is here since we need it during Boot
+    #   This really belongs in Capital.Core, but is here since we need it during Boot
     #
     PythonSystem = __import__('sys')
     is_python_2   = PythonSystem.version_info.major is 2
@@ -53,23 +53,23 @@ def gem():
 
     #
     #   export:
-    #       Exports a function to Gem (Global Execution Module).
+    #       Exports a function to Capital (Common Application Programming Interface Transcending All Languages)
     #       Can also be used with multiple arguments to export a list of values.
     #
-    provide_gem = globals().setdefault
+    provide_module = globals().setdefault
 
 
     def export(f, *arguments):
         if length(arguments) is 0:
-            return provide_gem(f.__name__, f)
+            return provide_module(f.__name__, f)
 
         argument_iterator = iterate(arguments)
         next_argument     = attribute_next(argument_iterator)
 
-        provide_gem(f, next_argument())
+        provide_module(f, next_argument())
 
         for v in argument_iterator:
-            provide_gem(v, next_argument())
+            provide_module(v, next_argument())
 
 
     #
@@ -80,7 +80,7 @@ def gem():
 
     #
     #   Export everything else we used in creating export function
-    #       Consider this part of Gem.Core -- and exporting it here just avoids repeating the code there
+    #       Consider this part of Capital.Core -- and exporting it here just avoids repeating the code there
     #
     export(
         'attribute_next',   attribute_next,
@@ -91,8 +91,8 @@ def gem():
     )
 
 
-@gem('Gem.Core')
-def gem():
+@module('Capital.Core')
+def module():
     #
     #   none
     #
@@ -152,8 +152,8 @@ def gem():
     )
 
 
-@gem('Gem.Exception')
-def gem():
+@module('Capital.Exception')
+def module():
     PythonException = (__import__('exceptions')   if is_python_2 else  PythonCore)
     RuntimeError    = PythonException.RuntimeError
 
@@ -171,8 +171,8 @@ def gem():
     )
 
 
-@gem('Gem.CatchException')
-def gem():
+@module('Capital.CatchException')
+def module():
     class CatchException(Object):
         __slots__ = ((
             'exception_type',           #   Type
@@ -205,8 +205,8 @@ def gem():
         return CatchException(FileNotFoundError)
 
 
-@gem('Gem.Import')
-def gem():
+@module('Capital.Import')
+def module():
     PythonImport = __import__('imp')
     find_module  = PythonImport.find_module
     load_module  = PythonImport.load_module
@@ -227,15 +227,15 @@ def gem():
             return load_module(name, f, pathname, description)
 
 
-@gem('Gem.File')
-def gem():
+@module('Capital.File')
+def module():
     export(
         'open_file',    PythonCore.open,
     )
 
 
-@gem('Gem.FileStatus')
-def gem():
+@module('Capital.FileStatus')
+def module():
     PythonOperatingSystem         = __import__('os')
     PythonFileStatus              = __import__('stat')
     PythonFileStatus__inode_flags = PythonFileStatus.S_IMODE
@@ -358,8 +358,8 @@ def gem():
         return file_status__or__nonexistent(path).is_regular_file
 
 
-@gem('Gem.IO')
-def gem():
+@module('Capital.IO')
+def module():
     export(
         #
         #   Insanely enough, the python 2.0 'input' function actually evaluated the input!
@@ -369,8 +369,8 @@ def gem():
     )
 
 
-@gem('Gem.Path')
-def gem():
+@module('Capital.Path')
+def module():
     PythonOperatingSystem = __import__('os')
     PythonPath            = __import__('os.path').path
 
@@ -383,8 +383,8 @@ def gem():
     )
 
 
-@gem('Gem.RegularExpression')
-def gem():
+@module('Capital.RegularExpression')
+def module():
     PythonRegularExpression    = __import__('re')
     compile_regular_expression = PythonRegularExpression.compile
 
@@ -394,8 +394,8 @@ def gem():
         return compile_regular_expression(pattern).match
 
 
-@gem('Main')
-def gem():
+@module('Main')
+def module():
     her_or_his    = 'her|his'
     is_her_or_his = FrozenSet(['her', 'his']).__contains__
 
