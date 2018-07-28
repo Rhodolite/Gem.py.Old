@@ -1,19 +1,19 @@
 #
 #   Copyright (c) 2017 Joy Diamond & Mike Zhukovskiy.  All rights reserved.
 #
-@gem('Beryl.BerylAnswer')
-def gem():
-    require_gem('Beryl.Ask')
-    require_gem('Gem.ExecuteFile')
-    require_gem('Gem.FileOutput')
-    require_gem('Gem.FileStatus')
-    require_gem('Gem.Path')
-    require_gem('Gem.RegularExpression')
+@module('Beryl.BerylAnswer')
+def module():
+    require_module('Beryl.Ask')
+    require_module('Capital.ExecuteFile')
+    require_module('Capital.FileOutput')
+    require_module('Capital.FileStatus')
+    require_module('Capital.Path')
+    require_module('Capital.RegularExpression')
 
 
     from Beryl.Shared import ask
-    from Gem import exists__regular_file, execute_python_from_file, FileOutput
-    from Gem import input, make_match_function, path_join, read_text_from_path
+    from Capital import exists__regular_file, execute_python_from_file, FileOutput
+    from Capital import input, make_match_function, path_join, read_text_from_path
 
 
     her_or_his    = 'her|his'
