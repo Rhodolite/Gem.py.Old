@@ -1,5 +1,6 @@
 #
 #   Copyright (c) 2017 Joy Diamond & Mike Zhukovskiy.  All rights reserved.
+#   Copyright (c) 2018 Joy Diamond.  All rights reserved.
 #
 @module('Beryl.BerylAnswer')
 def module():
