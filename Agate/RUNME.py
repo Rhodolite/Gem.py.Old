@@ -385,13 +385,13 @@ def module():
 
 @module('Capital.RegularExpression')
 def module():
-    PythonRegularExpression    = __import__('re')
-    compile_regular_expression = PythonRegularExpression.compile
+    PythonRegularExpression           = __import__('re')
+    compile_python_regular_expression = PythonRegularExpression.compile
 
 
     @export
     def make_match_function(pattern):
-        return compile_regular_expression(pattern).match
+        return compile_python_regular_expression(pattern).match
 
 
 @module('Main')
